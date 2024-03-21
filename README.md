@@ -19,6 +19,10 @@ The project is built using the following technologies:
 
 ## Features
 
+### Depositing and withdrawing
+- Users deposit eth in order to buy nfts or lend out eth
+- Users can withdraw eth from their account
+
 ### Buying and Selling
 - Users can buy and sell NFTs on the marketplace.
 - Sellers can list their NFTs for sale for a given ETH amount.
