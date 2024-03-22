@@ -9,4 +9,9 @@ contract DeployNftPawnShop is Script {
         NftPawnShop nftPawnShop = new NftPawnShop();
         return nftPawnShop;
     }
+
+    /**
+     * @dev Fallback function to receive ETH to test withdrawFees as the owner
+     */
+    receive() external payable {}
 }

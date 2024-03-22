@@ -12,9 +12,12 @@ contract NftPawnShop is Ownable {
 
     // State Variables
     ////////////////////
+    uint256 private constant FEE_DIVISOR = 100;
+
     mapping(address nftAddress => mapping(uint256 tokenId => uint256 price)) private s_nftPrice;
     mapping(address nftAddress => mapping(uint256 tokenId => address owner)) private s_nftOwner;
     mapping(address user => uint256 balance) private s_userBalances;
+    uint256 private s_feesAccumulated;
 
     // Events
     ////////////////////
@@ -82,6 +85,14 @@ contract NftPawnShop is Ownable {
     }
 
     //----Public Functions----//
+
+    function withdrawFees(uint256 amount) public onlyOwner notZero(amount) {
+        if (amount > getFeesAccumulated()) {
+            amount = getFeesAccumulated();
+        }
+        s_feesAccumulated -= amount;
+        payable(owner()).transfer(amount);
+    }
 
     /**
      * @dev List an NFT for sale
@@ -165,9 +176,10 @@ contract NftPawnShop is Ownable {
         }
 
         address seller = s_nftOwner[nftAddress][tokenId];
-        uint256 fee = price / 100;
+        uint256 fee = price / FEE_DIVISOR;
         uint256 payout = price - fee;
         s_userBalances[msg.sender] -= price;
+        s_feesAccumulated += fee;
 
         s_userBalances[seller] += payout;
         _removeListing(nftAddress, tokenId);
@@ -227,6 +239,23 @@ contract NftPawnShop is Ownable {
 
     function getBalance(address user) public view returns (uint256) {
         return s_userBalances[user];
+    }
+
+    /**
+     * @dev Get the amount of fees accumulated by the protocol
+     * @return feesAccumulated Amount of fees accumulated
+     */
+    // @note maybe make this onlyOwner?
+    function getFeesAccumulated() public view returns (uint256) {
+        return s_feesAccumulated;
+    }
+
+    /**
+     * @dev Get the owner of the contract
+     * @return owner Address of the owner of the contract
+     */
+    function getOwner() public view returns (address) {
+        return owner();
     }
 
     /**

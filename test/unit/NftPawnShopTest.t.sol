@@ -72,6 +72,68 @@ contract NftPawnShopTest is StdCheats, Test {
         nft.safeTransferFrom(userA, address(nftPawnShop), userANftId);
     }
 
+    //----withdrawFees Tests----//
+
+    function testWithdrawAllFeesAsOwner() public userAListedNft usersDeposited {
+        // user b buys nft
+        vm.startPrank(userB);
+        nftPawnShop.buyNft(address(nft), userANftId);
+        vm.stopPrank();
+
+        uint256 feeBalanceBefore = nftPawnShop.getFeesAccumulated();
+        uint256 ownerBalanceBefore = address(deployNftPawnShop).balance;
+
+        console.log(nftPawnShop.getFeesAccumulated());
+
+        vm.startPrank(address(deployNftPawnShop));
+        nftPawnShop.withdrawFees(1 ether);
+        vm.stopPrank();
+
+        uint256 feeBalanceAfter = nftPawnShop.getFeesAccumulated();
+        uint256 ownerBalanceAfter = address(deployNftPawnShop).balance;
+
+        assertEq(feeBalanceBefore, ownerBalanceAfter);
+        assertEq(feeBalanceAfter, ownerBalanceBefore);
+    }
+
+    function testWithdrawSomeFeesAsOwner() public userAListedNft usersDeposited {
+        // user b buys nft
+        uint256 withdrawAmount = 0.01 ether;
+
+        vm.startPrank(userB);
+        nftPawnShop.buyNft(address(nft), userANftId);
+        vm.stopPrank();
+
+        uint256 feeBalanceBefore = nftPawnShop.getFeesAccumulated();
+        uint256 ownerBalanceBefore = address(deployNftPawnShop).balance;
+
+        console.log(nftPawnShop.getFeesAccumulated());
+
+        vm.startPrank(address(deployNftPawnShop));
+        nftPawnShop.withdrawFees(withdrawAmount);
+        vm.stopPrank();
+
+        uint256 feeBalanceAfter = nftPawnShop.getFeesAccumulated();
+        uint256 ownerBalanceAfter = address(deployNftPawnShop).balance;
+
+        assertEq(feeBalanceAfter, feeBalanceBefore - withdrawAmount);
+        assertEq(ownerBalanceAfter, ownerBalanceBefore + withdrawAmount);
+    }
+
+    function testWithdrawZeroFeesAsOwner() public {
+        vm.startPrank(address(deployNftPawnShop));
+        vm.expectRevert(NftPawnShop.NftPawnShop__MustBeMoreThanZero.selector);
+        nftPawnShop.withdrawFees(0);
+        vm.stopPrank();
+    }
+
+    function testWithdrawFeesAsNonOwner() public {
+        vm.startPrank(userA);
+        vm.expectRevert();
+        nftPawnShop.withdrawFees(1 ether);
+        vm.stopPrank();
+    }
+
     //----listNft Tests----//
     function testListNft() public {
         vm.startPrank(userA);
