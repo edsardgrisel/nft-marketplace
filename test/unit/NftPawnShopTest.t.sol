@@ -651,7 +651,7 @@ contract NftPawnShopTest is StdCheats, Test {
 
     //----One off tests----//
 
-    function testOneBigTest() public userAListedNft usersDeposited {
+    function testOneBigTestListing() public userAListedNft usersDeposited {
         vm.startPrank(userA);
         nftPawnShop.withdraw(10 ether); // userA balance = 90
         nftPawnShop.removeListing(address(nft), userANftId);
@@ -690,5 +690,49 @@ contract NftPawnShopTest is StdCheats, Test {
         assertEq(nftPawnShop.getBalance(userB), 9.8 ether);
         assertEq(nft.ownerOf(userANftId), userB);
         assertEq(nft.ownerOf(userBNftId), userA);
+    }
+    /**
+     * @notice Sequence of funciton calls
+     * @dev
+     * 1. userB lists nft
+     * 2. userA requests pawn
+     * 3. userB withdraws 1 eth
+     * 4. userB approves pawn
+     * 5. userA buys nft from userB
+     * 6. userB forecloses pawn agreement with userA
+     * 7. Check that the nfts have swapped owners
+     */
+
+    function testOneBigTestPawn() public usersDeposited {
+        vm.startPrank(userB);
+        nft.approve(address(nftPawnShop), userBNftId);
+        nftPawnShop.listNft(address(nft), userBNftId, NFT_PRICE);
+        vm.stopPrank();
+
+        vm.startPrank(userA);
+        nft.approve(address(nftPawnShop), userANftId);
+        nftPawnShop.requestPawn(address(nft), userANftId, 1 ether, 1 days, 1e17);
+        vm.stopPrank();
+
+        vm.startPrank(userB);
+        nftPawnShop.withdraw(1 ether);
+        nftPawnShop.approvePawnRequest(address(nft), userANftId);
+        vm.stopPrank();
+
+        vm.startPrank(userA);
+        nftPawnShop.buyNft(address(nft), userBNftId);
+        vm.stopPrank();
+
+        vm.roll(block.number + 1);
+        vm.warp(2 days);
+
+        vm.startPrank(userB);
+        nftPawnShop.foreclosePawnAgreement();
+        vm.stopPrank();
+
+        assertEq(nft.ownerOf(userANftId), userB);
+        assertEq(nft.ownerOf(userBNftId), userA);
+        assertEq(nftPawnShop.getBalance(userA), 91 ether);
+        assertEq(nftPawnShop.getBalance(userB), 98 ether + 10 ether - 0.1 ether);
     }
 }
