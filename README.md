@@ -22,6 +22,7 @@ The project is built using the following technologies:
 ### Depositing and withdrawing
 - Users deposit eth in order to buy nfts or lend out eth
 - Users can withdraw eth from their account
+- Owner can withdraw fees from the contract
 
 ### Buying and Selling
 - Users can buy and sell NFTs on the marketplace.
@@ -34,5 +35,14 @@ The project is built using the following technologies:
 - Borrowers can list their NFT as collateral in order to borrow a given ETH amount at a certain interest rate for a certain duration.
 - Lenders can take the NFT as collateral and lend out the given ETH amount.
 - The borrower must then payback the loan amount + interest in the given amount of time in order to claim the NFT back.
-- If the borrower fails to repay the loan amount + interest in the given amount of time, the lender will claim the NFT as collateral.
+- If the borrower fails to repay the loan amount + interest in the given amount of time, the lender will claim the NFT as collateral (foreclosure).
+- Note: users can only be part of one pawn at a time as either a borrower or lender. If a user is already a borrower in a pawn,
+they must pay back the loan amount + interest in order to pawn another NFT or lend out. If a user is already a lender in a pawn,
+the loan must either be paid back or the pawn must be foreclosed in order to lend out another loan or to pawn an NFT. A user can be part of a pawn and also buy and sell NFTs on the marketplace.
 
+
+
+
+## Potential Improvements
+- fix interest math?
+- Helper methods in the test file to calcualte whether 2 structs are equal to reduce code duplication

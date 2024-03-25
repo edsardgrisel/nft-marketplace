@@ -10,12 +10,42 @@ contract NftPawnShop is Ownable {
     // Type Declarations
     ////////////////////
 
+    // Structs
+    ////////////////////
+    struct PawnRequest {
+        address borrower;
+        address nftAddress;
+        uint256 tokenId;
+        uint256 loanAmount;
+        uint256 loanDuration;
+        uint256 interestRate;
+    }
+
+    struct PawnAgreement {
+        address borrower;
+        address lender;
+        address nftAddress;
+        uint256 tokenId;
+        uint256 loanAmount;
+        uint256 loanDuration;
+        uint256 interestRate;
+        uint256 startTime;
+        uint256 endTime;
+        bool paidBackOrForeclosed;
+    }
+
     // State Variables
     ////////////////////
     uint256 private constant FEE_DIVISOR = 100;
+    uint256 private constant INTEREST_PRECISION = 100e18;
 
     mapping(address nftAddress => mapping(uint256 tokenId => uint256 price)) private s_nftPrice;
-    mapping(address nftAddress => mapping(uint256 tokenId => address owner)) private s_nftOwner;
+    mapping(address nftAddress => mapping(uint256 tokenId => address owner)) private s_nftListingOwner;
+
+    // maps token to pawn request which contains the owner
+    mapping(address nftAddress => mapping(uint256 tokenId => PawnRequest)) private s_nftPawnRequests;
+    mapping(address borrower => PawnAgreement) private s_pawnAgreements;
+
     mapping(address user => uint256 balance) private s_userBalances;
     uint256 private s_feesAccumulated;
 
@@ -25,6 +55,9 @@ contract NftPawnShop is Ownable {
     event NftDelisted(address indexed nftAddress, uint256 indexed tokenId);
     event NftListingUpdated(address nftAddress, uint256 tokenId, uint256 price);
     event NftSold(address nftAddress, uint256 tokenId, address buyer, address seller, uint256 price);
+    event PawnRequested(
+        address nftAddress, uint256 tokenId, uint256 loanAmount, uint256 loanDuration, uint256 interestRate
+    );
 
     // Errors
     ////////////////////
@@ -33,7 +66,11 @@ contract NftPawnShop is Ownable {
     error NftPawnShop__MustBeOwner();
     error NftPawnShop__NftAlreadyListed(address nftAddress, uint256 tokenId);
     error NftPawnShop__NftNotListed(address nftAddress, uint256 tokenId);
-    error NftPawnShop__InsufficientBalance(uint256 price, uint256 balance);
+    error NftPawnShop__InsufficientBalance(uint256 amount, uint256 balance);
+    error NftPawnShop__NoLoanToRepay();
+    error NftPawnShop__NoLoanToForecloseOn();
+    error NftPawnShop__NoPawnRequestToRemove();
+    error NftPawnShop__CannotApproveOwnPawnRequest();
 
     // Modifiers
     ////////////////////
@@ -53,7 +90,7 @@ contract NftPawnShop is Ownable {
 
     modifier onlyOwnerOfNft(address nftAddress, uint256 tokenId) {
         IERC721 nft = IERC721(nftAddress);
-        if (s_nftOwner[nftAddress][tokenId] != msg.sender) {
+        if (s_nftListingOwner[nftAddress][tokenId] != msg.sender) {
             revert NftPawnShop__MustBeOwner();
         }
         _;
@@ -84,6 +121,167 @@ contract NftPawnShop is Ownable {
         return bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"));
     }
 
+    /**
+     * @param nftAddress Address of the NFT contract
+     * @param tokenId ID of the NFT
+     * @param loanAmount Amount of the loan
+     * @param loanDuration Duration of the loan
+     * @param interestRate Interest rate of the loan in percentage. 1e18 is 100%. 1e17 is 10%. and so on.
+     * @dev The potential borrower requests a loan of loanAmount eth for loanDuration days with an interest rate of interestRate and
+     * deposits the nft as collateral. The nft is transferred to the contract.
+     */
+    function requestPawn(
+        address nftAddress,
+        uint256 tokenId,
+        uint256 loanAmount,
+        uint256 loanDuration,
+        uint256 interestRate
+    ) external notZeroAddress(nftAddress) notZero(loanAmount) notZero(loanDuration) {
+        PawnRequest memory pawnRequest = PawnRequest({
+            borrower: msg.sender,
+            nftAddress: nftAddress,
+            tokenId: tokenId,
+            loanAmount: loanAmount,
+            loanDuration: loanDuration,
+            interestRate: interestRate
+        });
+
+        s_nftPawnRequests[nftAddress][tokenId] = pawnRequest;
+        emit PawnRequested(nftAddress, tokenId, loanAmount, loanDuration, interestRate);
+
+        IERC721 nft = IERC721(nftAddress);
+        nft.safeTransferFrom(msg.sender, address(this), tokenId);
+    }
+
+    /**
+     * @param nftAddress Address of the NFT contract
+     * @param tokenId ID of the NFT
+     * @dev The borrower cancels the pawn request and the nft is transferred back to the borrower.
+     */
+    function removePawnRequest(address nftAddress, uint256 tokenId) external notZeroAddress(nftAddress) {
+        PawnRequest memory pawnRequest = s_nftPawnRequests[nftAddress][tokenId];
+        if (pawnRequest.borrower != msg.sender) {
+            revert NftPawnShop__NoPawnRequestToRemove();
+        }
+        _removePawnRequest(nftAddress, tokenId);
+
+        IERC721 nft = IERC721(nftAddress);
+        nft.safeTransferFrom(address(this), msg.sender, tokenId);
+    }
+
+    /**
+     * @param nftAddress Address of the NFT contract
+     * @param tokenId ID of the NFT
+     * @dev The lender approves the pawn request and the eth loan amount is transferred to the borrowers balace within the contract.
+     * The nft is locked up in the contract and
+     * can only be returned to the initial owner if the loan is repaid.
+     */
+    function approvePawnRequest(address nftAddress, uint256 tokenId) external notZeroAddress(nftAddress) {
+        PawnRequest memory pawnRequest = s_nftPawnRequests[nftAddress][tokenId];
+        if (pawnRequest.borrower == address(0)) {
+            revert NftPawnShop__NftNotListed(nftAddress, tokenId);
+        }
+        if (pawnRequest.borrower == msg.sender) {
+            revert NftPawnShop__CannotApproveOwnPawnRequest();
+        }
+        if (pawnRequest.loanAmount > getUserBalance(msg.sender)) {
+            revert NftPawnShop__InsufficientBalance(pawnRequest.loanAmount, getBalance(msg.sender));
+        }
+
+        PawnAgreement memory pawnAgreement = PawnAgreement({
+            borrower: pawnRequest.borrower,
+            lender: msg.sender,
+            nftAddress: pawnRequest.nftAddress,
+            tokenId: pawnRequest.tokenId,
+            loanAmount: pawnRequest.loanAmount,
+            loanDuration: pawnRequest.loanDuration,
+            interestRate: pawnRequest.interestRate,
+            startTime: block.timestamp,
+            endTime: block.timestamp + pawnRequest.loanDuration,
+            paidBackOrForeclosed: false
+        });
+
+        // delete pawn request
+        s_nftPawnRequests[nftAddress][tokenId] = PawnRequest({
+            borrower: address(0),
+            nftAddress: address(0),
+            tokenId: 0,
+            loanAmount: 0,
+            loanDuration: 0,
+            interestRate: 0
+        });
+
+        s_pawnAgreements[pawnRequest.borrower] = pawnAgreement;
+        s_pawnAgreements[msg.sender] = pawnAgreement;
+
+        s_nftPawnRequests[nftAddress][tokenId] = PawnRequest({
+            borrower: address(0),
+            nftAddress: address(0),
+            tokenId: 0,
+            loanAmount: 0,
+            loanDuration: 0,
+            interestRate: 0
+        });
+
+        s_userBalances[msg.sender] -= pawnRequest.loanAmount;
+        s_userBalances[pawnRequest.borrower] += pawnRequest.loanAmount;
+    }
+
+    /**
+     *
+     * @dev Checks if the loan is due and if it is and the loan hasnt been paid back in full, the nft is transferred to the lender.
+     */
+    function foreclosePawnAgreement() external {
+        PawnAgreement memory pawnAgreement = s_pawnAgreements[msg.sender];
+        if (pawnAgreement.lender != msg.sender) {
+            revert NftPawnShop__NoLoanToForecloseOn();
+        }
+        if (block.timestamp > pawnAgreement.endTime && !pawnAgreement.paidBackOrForeclosed) {
+            _removePawnAgreement(pawnAgreement.lender, pawnAgreement.borrower);
+
+            IERC721 nft = IERC721(pawnAgreement.nftAddress);
+            nft.safeTransferFrom(address(this), msg.sender, pawnAgreement.tokenId);
+        } else {
+            revert NftPawnShop__NoLoanToForecloseOn();
+        }
+    }
+
+    /**
+     *
+     * @dev The borrower repays the loan and the nft is transferred back to the borrower.
+     * If the loan is overdue but the lender hasnt called foreclosure yet, the borrower can repay the loan with the interest being
+     * calculated from start time to now instead of start time to end time and they get the nft back. e.i if the agreed period was
+     * 1 day and its paid back in 2 days, the interest paid will be calculated from 2 days instead of 1 day.
+     */
+    function repayLoan() external {
+        PawnAgreement memory pawnAgreement = s_pawnAgreements[msg.sender];
+        if (pawnAgreement.lender == address(0) || pawnAgreement.borrower != msg.sender) {
+            revert NftPawnShop__NoLoanToRepay();
+        }
+
+        uint256 interestAmount = calculateInterest(
+            pawnAgreement.loanAmount, pawnAgreement.interestRate, pawnAgreement.startTime, block.timestamp
+        );
+        uint256 amountToRepay = pawnAgreement.loanAmount + interestAmount;
+        if (s_userBalances[msg.sender] < amountToRepay) {
+            revert NftPawnShop__InsufficientBalance(amountToRepay, s_userBalances[msg.sender]);
+        }
+
+        _removePawnAgreement(pawnAgreement.lender, pawnAgreement.borrower);
+
+        uint256 fee = amountToRepay / FEE_DIVISOR;
+
+        s_userBalances[msg.sender] -= amountToRepay;
+        s_userBalances[pawnAgreement.lender] += amountToRepay - fee;
+
+        s_feesAccumulated += fee;
+
+        address nftAddress = pawnAgreement.nftAddress;
+        uint256 tokenId = pawnAgreement.tokenId;
+        IERC721 nft = IERC721(nftAddress);
+        nft.safeTransferFrom(address(this), msg.sender, tokenId);
+    }
+
     //----Public Functions----//
 
     function withdrawFees(uint256 amount) public onlyOwner notZero(amount) {
@@ -103,8 +301,6 @@ contract NftPawnShop is Ownable {
      * then an event is emitted to notify the listing of the NFT and the NFT is sent to the contract.
      *
      */
-    // @note onlyOwnerOfNft modifier might be redundant as safeTransfer already checks this for both remove
-    // and list functions?
     function listNft(address nftAddress, uint256 tokenId, uint256 price)
         external
         notZero(price)
@@ -115,7 +311,7 @@ contract NftPawnShop is Ownable {
             revert NftPawnShop__NftAlreadyListed(nftAddress, tokenId);
         }
         _setListing(nftAddress, tokenId, price);
-        s_nftOwner[nftAddress][tokenId] = msg.sender;
+        s_nftListingOwner[nftAddress][tokenId] = msg.sender;
         emit NftListed(nftAddress, tokenId, price);
         IERC721 nft = IERC721(nftAddress);
         nft.safeTransferFrom(msg.sender, address(this), tokenId);
@@ -175,7 +371,7 @@ contract NftPawnShop is Ownable {
             revert NftPawnShop__InsufficientBalance(price, userBalance);
         }
 
-        address seller = s_nftOwner[nftAddress][tokenId];
+        address seller = s_nftListingOwner[nftAddress][tokenId];
         uint256 fee = price / FEE_DIVISOR;
         uint256 payout = price - fee;
         s_userBalances[msg.sender] -= price;
@@ -217,6 +413,18 @@ contract NftPawnShop is Ownable {
         payable(msg.sender).transfer(amount);
     }
 
+    function getUserBalance(address user) public view returns (uint256) {
+        return s_userBalances[user];
+    }
+
+    function getNftPawnRequest(address nftAddress, uint256 tokenId) public view returns (PawnRequest memory) {
+        return s_nftPawnRequests[nftAddress][tokenId];
+    }
+
+    function getNftPawnAgreement(address user) public view returns (PawnAgreement memory) {
+        return s_pawnAgreements[user];
+    }
+
     /**
      * @dev Get the price of a listed NFT
      * @param nftAddress Address of the NFT contract
@@ -234,7 +442,7 @@ contract NftPawnShop is Ownable {
      * @return owner Address of the owner of the NFT. Returns zero if the NFT is not listed.
      */
     function getOwner(address nftAddress, uint256 tokenId) public view returns (address) {
-        return s_nftOwner[nftAddress][tokenId];
+        return s_nftListingOwner[nftAddress][tokenId];
     }
 
     function getBalance(address user) public view returns (uint256) {
@@ -254,8 +462,16 @@ contract NftPawnShop is Ownable {
      * @dev Get the owner of the contract
      * @return owner Address of the owner of the contract
      */
-    function getOwner() public view returns (address) {
+    function getOwnerOfContract() public view returns (address) {
         return owner();
+    }
+
+    function calculateInterest(uint256 loanAmount, uint256 interestRate, uint256 startTime, uint256 endTime)
+        public
+        view
+        returns (uint256)
+    {
+        return _calculateInterest(loanAmount, interestRate, startTime, endTime);
     }
 
     /**
@@ -268,6 +484,31 @@ contract NftPawnShop is Ownable {
     function getAllListedNfts() public view returns (address[] memory nftAddresses, uint256[] memory tokenIds) {}
 
     //----Internal Functions----//
+
+    function _removePawnRequest(address nftAddress, uint256 tokenId) internal {
+        s_nftPawnRequests[nftAddress][tokenId] = PawnRequest({
+            borrower: address(0),
+            nftAddress: address(0),
+            tokenId: 0,
+            loanAmount: 0,
+            loanDuration: 0,
+            interestRate: 0
+        });
+    }
+
+    // @note maybe rounding error?
+    function _calculateInterest(uint256 loanAmount, uint256 interestRate, uint256 startTime, uint256 endTime)
+        internal
+        view
+        returns (uint256)
+    {
+        // Calculate elapsed time in seconds
+        uint256 elapsedTime = endTime - startTime;
+        // Calculate interest accrued
+        uint256 interestAmount = (loanAmount * interestRate * elapsedTime) / (365 days * INTEREST_PRECISION); // Assuming a 365-day year
+
+        return interestAmount;
+    }
 
     /**
      * @dev Set the price of a listed NFT
@@ -282,6 +523,33 @@ contract NftPawnShop is Ownable {
 
     function _removeListing(address nftAddress, uint256 tokenId) internal {
         _setListing(nftAddress, tokenId, 0);
-        s_nftOwner[nftAddress][tokenId] = address(0);
+        s_nftListingOwner[nftAddress][tokenId] = address(0);
+    }
+
+    function _removePawnAgreement(address borrower, address lender) internal {
+        s_pawnAgreements[borrower] = PawnAgreement({
+            borrower: address(0),
+            lender: address(0),
+            nftAddress: address(0),
+            tokenId: 0,
+            loanAmount: 0,
+            loanDuration: 0,
+            interestRate: 0,
+            startTime: 0,
+            endTime: 0,
+            paidBackOrForeclosed: false
+        });
+        s_pawnAgreements[lender] = PawnAgreement({
+            borrower: address(0),
+            lender: address(0),
+            nftAddress: address(0),
+            tokenId: 0,
+            loanAmount: 0,
+            loanDuration: 0,
+            interestRate: 0,
+            startTime: 0,
+            endTime: 0,
+            paidBackOrForeclosed: false
+        });
     }
 }

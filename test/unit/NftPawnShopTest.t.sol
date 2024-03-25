@@ -9,6 +9,28 @@ import {Nft} from "../mock/Nft.sol";
 import {StdCheats} from "forge-std/StdCheats.sol";
 
 contract NftPawnShopTest is StdCheats, Test {
+    struct PawnRequest {
+        address borrower;
+        address nftAddress;
+        uint256 tokenId;
+        uint256 loanAmount;
+        uint256 loanDuration;
+        uint256 interestRate;
+    }
+
+    struct PawnAgreement {
+        address borrower;
+        address lender;
+        address nftAddress;
+        uint256 tokenId;
+        uint256 loanAmount;
+        uint256 loanDuration;
+        uint256 interestRate;
+        uint256 startTime;
+        uint256 endTime;
+        bool paidBackOrForeclosed;
+    }
+
     uint256 constant USER_STARTING_AMOUNT = 100 ether;
     uint256 constant NFT_PRICE = 10 ether;
     address userA = makeAddr("userA");
@@ -37,6 +59,26 @@ contract NftPawnShopTest is StdCheats, Test {
         vm.stopPrank();
         _;
     }
+
+    modifier userAHasRequestedPawn() {
+        vm.startPrank(userA);
+        nft.approve(address(nftPawnShop), userANftId);
+        nftPawnShop.requestPawn(address(nft), userANftId, 1 ether, 1 days, 1e17 /*10% interest rate annual*/ );
+        vm.stopPrank();
+        _;
+    }
+
+    modifier userARequestedAndUserBApprovedPawn() {
+        vm.startPrank(userA);
+        nft.approve(address(nftPawnShop), userANftId);
+        nftPawnShop.requestPawn(address(nft), userANftId, 1 ether, 1 days, 1e17 /*10% interest rate annual*/ );
+        vm.stopPrank();
+
+        vm.startPrank(userB);
+        nftPawnShop.approvePawnRequest(address(nft), userANftId);
+        vm.stopPrank();
+        _;
+    }
     /**
      * @notice Test setup
      * @dev Deploy the conract. If we are on a local chain, deal some ether to the users and mint one nft per user.
@@ -61,15 +103,234 @@ contract NftPawnShopTest is StdCheats, Test {
     }
 
     //----Constructor Tests----//
+
     function testConstructor() public {
         assertEq(nftPawnShop.owner(), address(deployNftPawnShop));
     }
 
     //----onErc721Received Tests----//
+
     function testContractCanReceiveErc721() public {
         vm.prank(userA);
         nft.approve(address(this), userANftId);
         nft.safeTransferFrom(userA, address(nftPawnShop), userANftId);
+    }
+
+    //----requestPrank Tests----//
+
+    function testRequestPawn() public usersDeposited {
+        vm.startPrank(userA);
+        nft.approve(address(nftPawnShop), userANftId);
+        nftPawnShop.requestPawn(address(nft), userANftId, 1 ether, 1 days, 1e17 /*10% interest rate annual*/ );
+        vm.stopPrank();
+        PawnRequest memory pawnRequest = PawnRequest({
+            borrower: userA,
+            nftAddress: address(nft),
+            tokenId: userANftId,
+            loanAmount: 1 ether,
+            loanDuration: 1 days,
+            interestRate: 1e17
+        });
+        assertEq(nftPawnShop.getNftPawnRequest(address(nft), userANftId).borrower, pawnRequest.borrower);
+        assertEq(nftPawnShop.getNftPawnRequest(address(nft), userANftId).nftAddress, pawnRequest.nftAddress);
+        assertEq(nftPawnShop.getNftPawnRequest(address(nft), userANftId).tokenId, pawnRequest.tokenId);
+        assertEq(nftPawnShop.getNftPawnRequest(address(nft), userANftId).loanAmount, pawnRequest.loanAmount);
+        assertEq(nftPawnShop.getNftPawnRequest(address(nft), userANftId).loanDuration, pawnRequest.loanDuration);
+        assertEq(nftPawnShop.getNftPawnRequest(address(nft), userANftId).interestRate, pawnRequest.interestRate);
+    }
+
+    function testRequestPawnZeroAddress() public {
+        vm.startPrank(userA);
+        vm.expectRevert(NftPawnShop.NftPawnShop__MustNotBeZeroAddress.selector);
+        nftPawnShop.requestPawn(address(0), userANftId, 1 ether, 1 days, 1e17 /*10% interest rate annual*/ );
+        vm.stopPrank();
+    }
+
+    function testRequestPawnZeroAmount() public {
+        vm.startPrank(userA);
+        vm.expectRevert(NftPawnShop.NftPawnShop__MustBeMoreThanZero.selector);
+        nftPawnShop.requestPawn(address(nft), userANftId, 0, 1 days, 1e17 /*10% interest rate annual*/ );
+        vm.stopPrank();
+    }
+
+    function testRequestPawnZeroDuration() public {
+        vm.startPrank(userA);
+        vm.expectRevert(NftPawnShop.NftPawnShop__MustBeMoreThanZero.selector);
+        nftPawnShop.requestPawn(address(nft), userANftId, 1 ether, 0, 1e17 /*10% interest rate annual*/ );
+        vm.stopPrank();
+    }
+
+    //----removePawnRequest Tests----//
+
+    function testRemovePawnRequest() public userAHasRequestedPawn {
+        vm.startPrank(userA);
+        nftPawnShop.removePawnRequest(address(nft), userANftId);
+        vm.stopPrank();
+        assertEq(nftPawnShop.getNftPawnRequest(address(nft), userANftId).borrower, address(0));
+        assertEq(nft.ownerOf(userANftId), userA);
+    }
+
+    function testRemovePawnRequestZeroAddress() public userAHasRequestedPawn {
+        vm.startPrank(userA);
+        vm.expectRevert(NftPawnShop.NftPawnShop__MustNotBeZeroAddress.selector);
+        nftPawnShop.removePawnRequest(address(0), userANftId);
+        vm.stopPrank();
+    }
+
+    function testRemovePawnRequestNotRequested() public {
+        vm.startPrank(userA);
+        vm.expectRevert();
+        nftPawnShop.removePawnRequest(address(nft), userANftId);
+        vm.stopPrank();
+    }
+
+    function testRemovePawnRequestAsNonOwner() public userAHasRequestedPawn {
+        vm.startPrank(userB);
+        vm.expectRevert(NftPawnShop.NftPawnShop__NoPawnRequestToRemove.selector);
+        nftPawnShop.removePawnRequest(address(nft), userANftId);
+        vm.stopPrank();
+    }
+
+    //----approvePawnRequest Tests----//
+
+    function testApprovePawnRequest() public userAHasRequestedPawn usersDeposited {
+        vm.startPrank(userB);
+        nftPawnShop.approvePawnRequest(address(nft), userANftId);
+        vm.stopPrank();
+        PawnAgreement memory pawnAgreement = PawnAgreement({
+            borrower: userA,
+            lender: userB,
+            nftAddress: address(nft),
+            tokenId: userANftId,
+            loanAmount: 1 ether,
+            loanDuration: 1 days,
+            interestRate: 1e17,
+            startTime: block.timestamp,
+            endTime: block.timestamp + 1 days,
+            paidBackOrForeclosed: false
+        });
+
+        assertEq(nftPawnShop.getNftPawnRequest(address(nft), userANftId).borrower, address(0));
+        assertEq(nftPawnShop.getNftPawnAgreement(userA).borrower, pawnAgreement.borrower);
+        assertEq(nftPawnShop.getNftPawnAgreement(userA).lender, pawnAgreement.lender);
+        assertEq(nftPawnShop.getNftPawnAgreement(userA).nftAddress, pawnAgreement.nftAddress);
+        assertEq(nftPawnShop.getNftPawnAgreement(userA).tokenId, pawnAgreement.tokenId);
+        assertEq(nftPawnShop.getNftPawnAgreement(userA).loanAmount, pawnAgreement.loanAmount);
+        assertEq(nftPawnShop.getNftPawnAgreement(userA).loanDuration, pawnAgreement.loanDuration);
+        assertEq(nftPawnShop.getNftPawnAgreement(userA).interestRate, pawnAgreement.interestRate);
+        assertEq(nftPawnShop.getNftPawnAgreement(userA).startTime, pawnAgreement.startTime);
+        assertEq(nftPawnShop.getNftPawnAgreement(userA).endTime, pawnAgreement.endTime);
+        assertEq(nftPawnShop.getNftPawnAgreement(userA).paidBackOrForeclosed, pawnAgreement.paidBackOrForeclosed);
+    }
+
+    function testApprovePawnRequestWithBalanceLessThanLoanAmount() public userAHasRequestedPawn {
+        vm.startPrank(userB);
+        vm.expectRevert(abi.encodeWithSelector(NftPawnShop.NftPawnShop__InsufficientBalance.selector, 1 ether, 0));
+        nftPawnShop.approvePawnRequest(address(nft), userANftId);
+        vm.stopPrank();
+    }
+
+    function testApprovePawnRequestZeroAddress() public userAHasRequestedPawn {
+        vm.startPrank(userB);
+        vm.expectRevert(NftPawnShop.NftPawnShop__MustNotBeZeroAddress.selector);
+        nftPawnShop.approvePawnRequest(address(0), userANftId);
+        vm.stopPrank();
+    }
+
+    function testApprovePawnRequestNotRequested() public {
+        vm.startPrank(userB);
+        vm.expectRevert();
+        nftPawnShop.approvePawnRequest(address(nft), userANftId);
+        vm.stopPrank();
+    }
+
+    function testApproveOwnPawnRequest() public userAHasRequestedPawn {
+        vm.startPrank(userA);
+        vm.expectRevert(NftPawnShop.NftPawnShop__CannotApproveOwnPawnRequest.selector);
+        nftPawnShop.approvePawnRequest(address(nft), userANftId);
+        vm.stopPrank();
+    }
+
+    //----foreclosePawnAgreement Tests----//
+
+    function testForeclosePawnAgreement() public usersDeposited userARequestedAndUserBApprovedPawn {
+        vm.warp(2 days);
+        vm.roll(block.number + 1);
+        vm.startPrank(userB);
+        nftPawnShop.foreclosePawnAgreement();
+        vm.stopPrank();
+        assertEq(nftPawnShop.getNftPawnAgreement(userA).lender, address(0));
+        assertEq(nft.ownerOf(userANftId), userB);
+    }
+
+    function testForeclosePawnAgreementNotLender() public usersDeposited userARequestedAndUserBApprovedPawn {
+        vm.warp(2 days);
+        vm.roll(block.number + 1);
+        vm.startPrank(makeAddr("notLender"));
+        vm.expectRevert(NftPawnShop.NftPawnShop__NoLoanToForecloseOn.selector);
+        nftPawnShop.foreclosePawnAgreement();
+        vm.stopPrank();
+    }
+
+    function testForeclosePawnAgreementEarly() public usersDeposited userARequestedAndUserBApprovedPawn {
+        vm.startPrank(userB);
+        vm.expectRevert(NftPawnShop.NftPawnShop__NoLoanToForecloseOn.selector);
+        nftPawnShop.foreclosePawnAgreement();
+        vm.stopPrank();
+    }
+
+    //----repayLoan Tests----//
+
+    function testRepayLoan() public usersDeposited userARequestedAndUserBApprovedPawn {
+        vm.warp(1 days);
+        vm.roll(block.number + 1);
+        vm.startPrank(userA);
+        nftPawnShop.repayLoan();
+        vm.stopPrank();
+
+        uint256 interestAmount = nftPawnShop.calculateInterest(1 ether, 1e17, 0, 1 days);
+
+        assertEq(nftPawnShop.getNftPawnAgreement(userA).lender, address(0));
+        uint256 errorMargin = 0.0000000001 ether;
+        uint256 balanceA = nftPawnShop.getBalance(userA);
+        assertTrue(
+            balanceA - errorMargin < (USER_STARTING_AMOUNT - interestAmount)
+                && (USER_STARTING_AMOUNT - interestAmount) < balanceA + errorMargin
+        );
+        uint256 balanceB = nftPawnShop.getBalance(userB);
+        assertTrue(
+            (balanceB - errorMargin) < (USER_STARTING_AMOUNT + interestAmount - nftPawnShop.getFeesAccumulated())
+                && (USER_STARTING_AMOUNT + interestAmount - nftPawnShop.getFeesAccumulated()) < (balanceB + errorMargin)
+        );
+    }
+
+    function testRepayLoanInsufficientBalance() public usersDeposited userARequestedAndUserBApprovedPawn {
+        vm.startPrank(userA);
+        nftPawnShop.withdraw(type(uint256).max);
+        console.log(nftPawnShop.getBalance(userA));
+        vm.expectRevert(abi.encodeWithSelector(NftPawnShop.NftPawnShop__InsufficientBalance.selector, 1 ether, 0 ether));
+        nftPawnShop.repayLoan();
+        vm.stopPrank();
+    }
+
+    function testRepayLoanAfterForeclosure() public usersDeposited userARequestedAndUserBApprovedPawn {
+        vm.warp(2 days);
+        vm.roll(block.number + 1);
+        vm.startPrank(userB);
+        nftPawnShop.foreclosePawnAgreement();
+        vm.stopPrank();
+
+        vm.startPrank(userA);
+        vm.expectRevert(NftPawnShop.NftPawnShop__NoLoanToRepay.selector);
+        nftPawnShop.repayLoan();
+        vm.stopPrank();
+    }
+
+    function testRepayLoanBeforeLoan() public usersDeposited {
+        vm.startPrank(userA);
+        vm.expectRevert(NftPawnShop.NftPawnShop__NoLoanToRepay.selector);
+        nftPawnShop.repayLoan();
+        vm.stopPrank();
     }
 
     //----withdrawFees Tests----//
@@ -287,6 +548,15 @@ contract NftPawnShopTest is StdCheats, Test {
         assertEq(nftPawnShop.getBalance(userA), USER_STARTING_AMOUNT - fee);
     }
 
+    function testBuyNftWithInsufficientBalance() public userAListedNft {
+        vm.startPrank(userB);
+
+        // abi.encodewithsel
+        vm.expectRevert(abi.encodeWithSelector(NftPawnShop.NftPawnShop__InsufficientBalance.selector, NFT_PRICE, 0));
+        nftPawnShop.buyNft(address(nft), userANftId);
+        vm.stopPrank();
+    }
+
     //----deposit Tests----//
 
     function testDeposit() public {
@@ -351,10 +621,32 @@ contract NftPawnShopTest is StdCheats, Test {
         assertEq(nftPawnShop.getOwner(address(nft), userANftId), address(0));
     }
 
+    //----getOwnerOfContract Tests----//
+
+    function testGetOwnerOfContract() public {
+        assertEq(nftPawnShop.getOwnerOfContract(), address(deployNftPawnShop));
+    }
+
     //----getBalance Tests----//
 
     function testGetBalance() public usersDeposited {
         assertEq(nftPawnShop.getBalance(userA), USER_STARTING_AMOUNT);
+    }
+
+    //----calculateInterest tests----//
+
+    function testCalculateInterest1() public {
+        uint256 interest = nftPawnShop.calculateInterest(10 ether, 1e18, 0, 1 days);
+        console.log(interest);
+        uint256 expectedInterest = 273972602739726;
+        assertEq(interest, expectedInterest);
+    }
+
+    function testCalculateInterest2() public {
+        uint256 interest = nftPawnShop.calculateInterest(10 ether, 1e18, 0, 365 days);
+        console.log(interest);
+        uint256 expectedInterest = 0.1 ether;
+        assertEq(interest, expectedInterest);
     }
 
     //----One off tests----//
