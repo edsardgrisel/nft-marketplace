@@ -2,19 +2,20 @@
 pragma solidity 0.8.20;
 
 import {Script} from "forge-std/Script.sol";
-import {NftPawnShop} from "../src/NftPawnShop.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
+import {Nft} from "../test/mock/Nft.sol";
 
-contract DeployNftPawnShop is Script {
-    function run() external returns (NftPawnShop, HelperConfig) {
+contract DeployNft is Script {
+    function run() external returns (Nft, Nft) {
         HelperConfig helperConfig = new HelperConfig();
         (uint256 deployerKey) = helperConfig.activeNetworkConfig();
 
         vm.startBroadcast(deployerKey);
-        NftPawnShop nftPawnShop = new NftPawnShop();
+        Nft nftProjectOne = new Nft("Project One", "P1");
+        Nft nftProjectTwo = new Nft("Project Two", "P2");
         vm.stopBroadcast();
 
-        return (nftPawnShop, helperConfig);
+        return (nftProjectOne, nftProjectTwo);
     }
 
     /**

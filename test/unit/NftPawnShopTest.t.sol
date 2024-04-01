@@ -7,6 +7,7 @@ import {NftPawnShop} from "../../src/NftPawnShop.sol";
 import {DeployNftPawnShop} from "../../script/DeployNftPawnShop.s.sol";
 import {Nft} from "../mock/Nft.sol";
 import {StdCheats} from "forge-std/StdCheats.sol";
+import {HelperConfig} from "../../script/HelperConfig.s.sol";
 
 contract NftPawnShopTest is StdCheats, Test {
     struct PawnRequest {
@@ -40,6 +41,8 @@ contract NftPawnShopTest is StdCheats, Test {
     Nft nft;
     NftPawnShop nftPawnShop;
     DeployNftPawnShop deployNftPawnShop;
+    HelperConfig helperConfig;
+    address ownerAddress;
 
     modifier userAListedNft() {
         vm.startPrank(userA);
@@ -86,17 +89,17 @@ contract NftPawnShopTest is StdCheats, Test {
 
     function setUp() external {
         deployNftPawnShop = new DeployNftPawnShop();
-        nftPawnShop = deployNftPawnShop.run();
-
+        (nftPawnShop, helperConfig) = deployNftPawnShop.run();
         if (block.chainid == 31337) {
             vm.deal(userA, USER_STARTING_AMOUNT);
             vm.deal(userB, USER_STARTING_AMOUNT);
 
-            nft = new Nft();
+            nft = new Nft("Nft", "NFT");
             vm.prank(userA);
             nft.mintNft("uriA");
             vm.prank(userB);
             nft.mintNft("uriB");
+            ownerAddress = vm.envAddress("ANVIL_PUBLIC_KEY_ZERO");
         } else {
             // @note: deploy the contract on sepolia
         }
@@ -105,7 +108,7 @@ contract NftPawnShopTest is StdCheats, Test {
     //----Constructor Tests----//
 
     function testConstructor() public {
-        assertEq(nftPawnShop.owner(), address(deployNftPawnShop));
+        assertEq(nftPawnShop.owner(), ownerAddress);
     }
 
     //----onErc721Received Tests----//
@@ -342,16 +345,16 @@ contract NftPawnShopTest is StdCheats, Test {
         vm.stopPrank();
 
         uint256 feeBalanceBefore = nftPawnShop.getFeesAccumulated();
-        uint256 ownerBalanceBefore = address(deployNftPawnShop).balance;
+        uint256 ownerBalanceBefore = address(ownerAddress).balance;
 
         console.log(nftPawnShop.getFeesAccumulated());
 
-        vm.startPrank(address(deployNftPawnShop));
+        vm.startPrank(ownerAddress);
         nftPawnShop.withdrawFees(1 ether);
         vm.stopPrank();
 
         uint256 feeBalanceAfter = nftPawnShop.getFeesAccumulated();
-        uint256 ownerBalanceAfter = address(deployNftPawnShop).balance;
+        uint256 ownerBalanceAfter = address(ownerAddress).balance;
 
         assertEq(feeBalanceBefore, ownerBalanceAfter);
         assertEq(feeBalanceAfter, ownerBalanceBefore);
@@ -366,23 +369,23 @@ contract NftPawnShopTest is StdCheats, Test {
         vm.stopPrank();
 
         uint256 feeBalanceBefore = nftPawnShop.getFeesAccumulated();
-        uint256 ownerBalanceBefore = address(deployNftPawnShop).balance;
+        uint256 ownerBalanceBefore = address(ownerAddress).balance;
 
         console.log(nftPawnShop.getFeesAccumulated());
 
-        vm.startPrank(address(deployNftPawnShop));
+        vm.startPrank(address(ownerAddress));
         nftPawnShop.withdrawFees(withdrawAmount);
         vm.stopPrank();
 
         uint256 feeBalanceAfter = nftPawnShop.getFeesAccumulated();
-        uint256 ownerBalanceAfter = address(deployNftPawnShop).balance;
+        uint256 ownerBalanceAfter = address(ownerAddress).balance;
 
         assertEq(feeBalanceAfter, feeBalanceBefore - withdrawAmount);
         assertEq(ownerBalanceAfter, ownerBalanceBefore + withdrawAmount);
     }
 
     function testWithdrawZeroFeesAsOwner() public {
-        vm.startPrank(address(deployNftPawnShop));
+        vm.startPrank(address(ownerAddress));
         vm.expectRevert(NftPawnShop.NftPawnShop__MustBeMoreThanZero.selector);
         nftPawnShop.withdrawFees(0);
         vm.stopPrank();
@@ -624,7 +627,7 @@ contract NftPawnShopTest is StdCheats, Test {
     //----getOwnerOfContract Tests----//
 
     function testGetOwnerOfContract() public {
-        assertEq(nftPawnShop.getOwnerOfContract(), address(deployNftPawnShop));
+        assertEq(nftPawnShop.getOwnerOfContract(), ownerAddress);
     }
 
     //----getBalance Tests----//
@@ -734,5 +737,19 @@ contract NftPawnShopTest is StdCheats, Test {
         assertEq(nft.ownerOf(userBNftId), userA);
         assertEq(nftPawnShop.getBalance(userA), 91 ether);
         assertEq(nftPawnShop.getBalance(userB), 98 ether + 10 ether - 0.1 ether);
+    }
+
+    function privateKeyToAddress(uint256 privateKey) public pure returns (address) {
+        return address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            ecrecover(bytes32(0), uint8(privateKey), bytes32(uint256(0)), bytes32(uint256(0)))
+                        )
+                    )
+                )
+            )
+        );
     }
 }

@@ -9,7 +9,7 @@ contract Nft is ERC721 {
     mapping(uint256 tokenId => string tokenUri) private s_tokenIdToUri;
     uint256 private s_tokenCounter;
 
-    constructor() ERC721("Nft", "NFT") {
+    constructor(string memory name, string memory ticker) ERC721(name, ticker) {
         s_tokenCounter = 0;
     }
 

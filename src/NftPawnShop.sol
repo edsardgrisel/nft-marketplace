@@ -462,6 +462,7 @@ contract NftPawnShop is Ownable {
      * @dev Get the owner of the contract
      * @return owner Address of the owner of the contract
      */
+    // @note maybe redundant?
     function getOwnerOfContract() public view returns (address) {
         return owner();
     }
