@@ -5,6 +5,7 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Test, console} from "forge-std/Test.sol";
 import {NftPawnShop} from "../../src/NftPawnShop.sol";
 import {DeployNftPawnShop} from "../../script/DeployNftPawnShop.s.sol";
+import {DeployNft} from "../../script/DeployNft.s.sol";
 import {Nft} from "../mock/Nft.sol";
 import {StdCheats} from "forge-std/StdCheats.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
@@ -41,6 +42,7 @@ contract NftPawnShopTest is StdCheats, Test {
     Nft nft;
     NftPawnShop nftPawnShop;
     DeployNftPawnShop deployNftPawnShop;
+    DeployNft deployNft;
     HelperConfig helperConfig;
     address ownerAddress;
 
@@ -90,6 +92,9 @@ contract NftPawnShopTest is StdCheats, Test {
     function setUp() external {
         deployNftPawnShop = new DeployNftPawnShop();
         (nftPawnShop, helperConfig) = deployNftPawnShop.run();
+
+        deployNft = new DeployNft();
+        nft = deployNft.run();
         if (block.chainid == 31337) {
             vm.deal(userA, USER_STARTING_AMOUNT);
             vm.deal(userB, USER_STARTING_AMOUNT);

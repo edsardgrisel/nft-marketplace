@@ -6,16 +6,15 @@ import {HelperConfig} from "./HelperConfig.s.sol";
 import {Nft} from "../test/mock/Nft.sol";
 
 contract DeployNft is Script {
-    function run() external returns (Nft, Nft) {
+    function run() external returns (Nft) {
         HelperConfig helperConfig = new HelperConfig();
         (uint256 deployerKey) = helperConfig.activeNetworkConfig();
 
         vm.startBroadcast(deployerKey);
         Nft nftProjectOne = new Nft("Project One", "P1");
-        Nft nftProjectTwo = new Nft("Project Two", "P2");
         vm.stopBroadcast();
 
-        return (nftProjectOne, nftProjectTwo);
+        return (nftProjectOne);
     }
 
     /**

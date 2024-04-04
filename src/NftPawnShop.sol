@@ -51,12 +51,30 @@ contract NftPawnShop is Ownable {
 
     // Events
     ////////////////////
-    event NftListed(address nftAddress, uint256 tokenId, uint256 price);
-    event NftDelisted(address indexed nftAddress, uint256 indexed tokenId);
-    event NftListingUpdated(address nftAddress, uint256 tokenId, uint256 price);
-    event NftSold(address nftAddress, uint256 tokenId, address buyer, address seller, uint256 price);
+    event NftListed(address indexed seller, address indexed nftAddress, uint256 indexed tokenId, uint256 price);
+    event NftDelisted(address indexed seller, address indexed nftAddress, uint256 indexed tokenId);
+    event NftSold(address indexed buyer, address indexed nftAddress, uint256 indexed tokenId, uint256 price);
+
     event PawnRequested(
-        address nftAddress, uint256 tokenId, uint256 loanAmount, uint256 loanDuration, uint256 interestRate
+        address indexed borrower,
+        address indexed nftAddress,
+        uint256 indexed tokenId,
+        uint256 loanAmount,
+        uint256 loanDuration,
+        uint256 interestRate
+    );
+    event PawnRequestRemoved(address indexed borrower, address indexed nftAddress, uint256 indexed tokenId);
+    event PawnRequestApproved(
+        address borrower,
+        address indexed lender,
+        address indexed nftAddress,
+        uint256 indexed tokenId,
+        uint256 loanAmount,
+        uint256 loanDuration,
+        uint256 interestRate
+    );
+    event PawnAgreementRemoved(
+        address borrower, address indexed lender, address indexed nftAddress, uint256 indexed tokenId
     );
 
     // Errors
@@ -147,7 +165,7 @@ contract NftPawnShop is Ownable {
         });
 
         s_nftPawnRequests[nftAddress][tokenId] = pawnRequest;
-        emit PawnRequested(nftAddress, tokenId, loanAmount, loanDuration, interestRate);
+        emit PawnRequested(msg.sender, nftAddress, tokenId, loanAmount, loanDuration, interestRate);
 
         IERC721 nft = IERC721(nftAddress);
         nft.safeTransferFrom(msg.sender, address(this), tokenId);
@@ -164,6 +182,7 @@ contract NftPawnShop is Ownable {
             revert NftPawnShop__NoPawnRequestToRemove();
         }
         _removePawnRequest(nftAddress, tokenId);
+        emit PawnRequestRemoved(msg.sender, nftAddress, tokenId);
 
         IERC721 nft = IERC721(nftAddress);
         nft.safeTransferFrom(address(this), msg.sender, tokenId);
@@ -187,6 +206,16 @@ contract NftPawnShop is Ownable {
         if (pawnRequest.loanAmount > getUserBalance(msg.sender)) {
             revert NftPawnShop__InsufficientBalance(pawnRequest.loanAmount, getBalance(msg.sender));
         }
+
+        emit PawnRequestApproved(
+            pawnRequest.borrower,
+            msg.sender,
+            nftAddress,
+            tokenId,
+            pawnRequest.loanAmount,
+            pawnRequest.loanDuration,
+            pawnRequest.interestRate
+        );
 
         PawnAgreement memory pawnAgreement = PawnAgreement({
             borrower: pawnRequest.borrower,
@@ -238,6 +267,9 @@ contract NftPawnShop is Ownable {
         }
         if (block.timestamp > pawnAgreement.endTime && !pawnAgreement.paidBackOrForeclosed) {
             _removePawnAgreement(pawnAgreement.lender, pawnAgreement.borrower);
+            emit PawnAgreementRemoved(
+                pawnAgreement.borrower, pawnAgreement.lender, pawnAgreement.nftAddress, pawnAgreement.tokenId
+            );
 
             IERC721 nft = IERC721(pawnAgreement.nftAddress);
             nft.safeTransferFrom(address(this), msg.sender, pawnAgreement.tokenId);
@@ -268,6 +300,9 @@ contract NftPawnShop is Ownable {
         }
 
         _removePawnAgreement(pawnAgreement.lender, pawnAgreement.borrower);
+        emit PawnAgreementRemoved(
+            pawnAgreement.borrower, pawnAgreement.lender, pawnAgreement.nftAddress, pawnAgreement.tokenId
+        );
 
         uint256 fee = amountToRepay / FEE_DIVISOR;
 
@@ -312,7 +347,7 @@ contract NftPawnShop is Ownable {
         }
         _setListing(nftAddress, tokenId, price);
         s_nftListingOwner[nftAddress][tokenId] = msg.sender;
-        emit NftListed(nftAddress, tokenId, price);
+        emit NftListed(msg.sender, nftAddress, tokenId, price);
         IERC721 nft = IERC721(nftAddress);
         nft.safeTransferFrom(msg.sender, address(this), tokenId);
     }
@@ -330,7 +365,7 @@ contract NftPawnShop is Ownable {
         isListed(nftAddress, tokenId)
     {
         _removeListing(nftAddress, tokenId);
-        emit NftDelisted(nftAddress, tokenId);
+        emit NftDelisted(msg.sender, nftAddress, tokenId);
         IERC721 nft = IERC721(nftAddress);
         nft.safeTransferFrom(address(this), msg.sender, tokenId);
     }
@@ -350,7 +385,7 @@ contract NftPawnShop is Ownable {
         isListed(nftAddress, tokenId)
     {
         _setListing(nftAddress, tokenId, price);
-        emit NftListingUpdated(nftAddress, tokenId, price);
+        emit NftListed(msg.sender, nftAddress, tokenId, price);
     }
 
     /**
@@ -379,7 +414,7 @@ contract NftPawnShop is Ownable {
 
         s_userBalances[seller] += payout;
         _removeListing(nftAddress, tokenId);
-        emit NftSold(nftAddress, tokenId, msg.sender, seller, price);
+        emit NftSold(msg.sender, nftAddress, tokenId, price);
 
         IERC721 nft = IERC721(nftAddress);
         nft.safeTransferFrom(address(this), msg.sender, tokenId);
