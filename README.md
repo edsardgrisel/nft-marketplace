@@ -15,7 +15,7 @@ The project is built using the following technologies:
 
 
 ## Usage
-
+deploy: make deploy ARGS="--network sepolia"
 
 ## Features
 

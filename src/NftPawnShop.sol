@@ -319,6 +319,13 @@ contract NftPawnShop is Ownable {
 
     //----Public Functions----//
 
+    /*
+        * @dev Withdraw accumulated fees as owner
+        * @param amount Amount of fees to withdraw
+        * @dev The amount of fees to withdraw is checked against the accumulated fees.
+        * If the amount is greater than the accumulated fees, the entire accumulated fees are withdrawn.
+        * If the amount is less than or equal to the accumulated fees, the amount is withdrawn.
+        */
     function withdrawFees(uint256 amount) public onlyOwner notZero(amount) {
         if (amount > getFeesAccumulated()) {
             amount = getFeesAccumulated();
