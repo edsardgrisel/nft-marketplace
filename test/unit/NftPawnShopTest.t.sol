@@ -655,86 +655,90 @@ contract NftPawnShopTest is StdCheats, Test {
 
     //----One off tests----//
 
-    // function testOneBigTestListing() public userAListedNft {
-    //     vm.startPrank(userA);
-    //     nftPawnShop.removeListing(address(nft), userANftId);
-    //     nft.approve(address(nftPawnShop), userANftId);
-    //     nftPawnShop.listNft(address(nft), userANftId, NFT_PRICE);
-    //     vm.stopPrank();
+    function testOneBigTestListing() public userAListedNft {
+        vm.startPrank(userA);
+        nftPawnShop.removeListing(address(nft), userANftId);
+        nft.approve(address(nftPawnShop), userANftId);
+        nftPawnShop.listNft(address(nft), userANftId, NFT_PRICE);
+        vm.stopPrank();
 
-    //     vm.deal(userB, 100 ether);
-    //     vm.startPrank(userB);
-    //     vm.stopPrank();
+        //user b buys user a nft
+        vm.startPrank(userB);
+        nftPawnShop.buyNft{value: NFT_PRICE}(address(nft), userANftId); // userA balance = 90 + 10 - 0.1 = 99.9, userB balance = 200 - 10
+        vm.stopPrank();
 
-    //     //user b buys user a nft
-    //     vm.startPrank(userB);
-    //     nftPawnShop.buyNft{value: NFT_PRICE}(address(nft), userANftId); // userA balance = 90 + 10 - 0.1 = 99.9, userB balance = 200 - 10
-    //     vm.stopPrank();
+        //user b lists nft
+        vm.startPrank(userB);
+        nft.approve(address(nftPawnShop), userBNftId);
+        nftPawnShop.listNft(address(nft), userBNftId, NFT_PRICE);
+        nftPawnShop.updateListingPrice(address(nft), userBNftId, NFT_PRICE * 2);
+        vm.stopPrank();
 
-    //     //user b lists nft
-    //     vm.startPrank(userB);
-    //     nft.approve(address(nftPawnShop), userBNftId);
-    //     nftPawnShop.listNft(address(nft), userBNftId, NFT_PRICE);
-    //     nftPawnShop.updateListingPrice(address(nft), userBNftId, NFT_PRICE * 2);
-    //     vm.stopPrank();
+        //user a buys user b nft
+        vm.startPrank(userA);
+        nftPawnShop.buyNft{value: NFT_PRICE * 2}(address(nft), userBNftId); // userA balance = 99.9 - 20 = 79.9, userB balance = 200 + 20
+        vm.stopPrank();
 
-    //     //user a buys user b nft
-    //     vm.startPrank(userA);
-    //     nftPawnShop.buyNft{value: NFT_PRICE * 2}(address(nft), userBNftId); // userA balance = 99.9 - 20 = 79.9, userB balance = 200 + 20
-    //     vm.stopPrank();
+        //user b withdraws all funds
+        vm.startPrank(userB);
+        nftPawnShop.withdraw(100 ether);
+        vm.stopPrank();
 
-    //     //user b withdraws all funds
-    //     vm.startPrank(userB);
-    //     nftPawnShop.withdraw(200 ether);
-    //     vm.stopPrank();
+        vm.startPrank(userA);
+        nftPawnShop.withdraw(100 ether);
+        vm.stopPrank();
 
-    //     assertEq(nftPawnShop.getBalance(userA), 79.9 ether);
-    //     assertEq(nftPawnShop.getBalance(userB), 9.8 ether);
-    //     assertEq(nft.ownerOf(userANftId), userB);
-    //     assertEq(nft.ownerOf(userBNftId), userA);
-    // }
-    // /**
-    //  * @notice Sequence of funciton calls
-    //  * @dev
-    //  * 1. userB lists nft
-    //  * 2. userA requests pawn
-    //  * 3. userB withdraws 1 eth
-    //  * 4. userB approves pawn
-    //  * 5. userA buys nft from userB
-    //  * 6. userB forecloses pawn agreement with userA
-    //  * 7. Check that the nfts have swapped owners
-    //  */
+        assertEq(nftPawnShop.getBalance(userA), 0);
+        assertEq(nftPawnShop.getBalance(userB), 0);
+        assertEq(userA.balance, 89.9 ether);
+        assertEq(nft.ownerOf(userANftId), userB);
+        assertEq(nft.ownerOf(userBNftId), userA);
+    }
+    /**
+     * @notice Sequence of funciton calls
+     * @dev
+     * 1. userB lists nft
+     * 2. userA requests pawn
+     * 3. userB withdraws 1 eth
+     * 4. userB approves pawn
+     * 5. userA buys nft from userB
+     * 6. userB forecloses pawn agreement with userA
+     * 7. Check that the nfts have swapped owners
+     */
 
-    // function testOneBigTestPawn() public {
-    //     vm.startPrank(userB);
-    //     nft.approve(address(nftPawnShop), userBNftId);
-    //     nftPawnShop.listNft(address(nft), userBNftId, NFT_PRICE);
-    //     vm.stopPrank();
+    function testOneBigTestPawn() public {
+        vm.startPrank(userB);
+        nft.approve(address(nftPawnShop), userBNftId);
+        nftPawnShop.listNft(address(nft), userBNftId, NFT_PRICE);
+        vm.stopPrank();
 
-    //     vm.startPrank(userA);
-    //     nft.approve(address(nftPawnShop), userANftId);
-    //     nftPawnShop.requestPawn(address(nft), userANftId, 1 ether, 1 days, 1e17);
-    //     vm.stopPrank();
+        vm.startPrank(userA);
+        nft.approve(address(nftPawnShop), userANftId);
+        nftPawnShop.requestPawn(address(nft), userANftId, 1 ether, 1 days, 1e17);
+        vm.stopPrank();
 
-    //     vm.startPrank(userB);
-    //     nftPawnShop.withdraw(1 ether);
-    //     nftPawnShop.approvePawnRequest(address(nft), userANftId);
-    //     vm.stopPrank();
+        vm.startPrank(userB);
+        nftPawnShop.withdraw(1 ether);
+        nftPawnShop.approvePawnRequest{value: 1 ether}(address(nft), userANftId);
+        vm.stopPrank();
 
-    //     vm.startPrank(userA);
-    //     nftPawnShop.buyNft{value: NFT_PRICE}(address(nft), userBNftId);
-    //     vm.stopPrank();
+        vm.startPrank(userA);
+        nftPawnShop.buyNft{value: NFT_PRICE}(address(nft), userBNftId);
+        vm.stopPrank();
 
-    //     vm.roll(block.number + 1);
-    //     vm.warp(2 days);
+        vm.roll(block.number + 1);
+        vm.warp(2 days);
 
-    //     vm.startPrank(userB);
-    //     nftPawnShop.foreclosePawnAgreement();
-    //     vm.stopPrank();
+        vm.startPrank(userB);
+        nftPawnShop.foreclosePawnAgreement();
+        vm.stopPrank();
 
-    //     assertEq(nft.ownerOf(userANftId), userB);
-    //     assertEq(nft.ownerOf(userBNftId), userA);
-    //     assertEq(nftPawnShop.getBalance(userA), 91 ether);
-    //     assertEq(nftPawnShop.getBalance(userB), 98 ether + 10 ether - 0.1 ether);
-    // }
+        assertEq(nft.ownerOf(userANftId), userB);
+        assertEq(nft.ownerOf(userBNftId), userA);
+        assertEq(nftPawnShop.getBalance(userA), 1 ether);
+        assertEq(nftPawnShop.getBalance(userB), 9.9 ether);
+        assertEq(userB.balance, USER_STARTING_AMOUNT - 1 ether);
+    }
+    //9900000000000000000
+    //9000000000000000000
 }
