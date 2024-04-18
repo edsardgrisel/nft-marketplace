@@ -739,6 +739,42 @@ contract NftPawnShopTest is StdCheats, Test {
         assertEq(nftPawnShop.getBalance(userB), 9.9 ether);
         assertEq(userB.balance, USER_STARTING_AMOUNT - 1 ether);
     }
-    //9900000000000000000
-    //9000000000000000000
+
+    //------breaks contract------//
+
+    function testCantApproveWithOpenRequest() public {
+        vm.startPrank(userA);
+        nft.approve(address(nftPawnShop), userANftId);
+        nftPawnShop.requestPawn(address(nft), userANftId, 1 ether, 1 days, 1e17);
+        vm.stopPrank();
+
+        vm.startPrank(userB);
+        nft.approve(address(nftPawnShop), userBNftId);
+        nftPawnShop.requestPawn(address(nft), userBNftId, 1 ether, 1 days, 1e17);
+        vm.stopPrank();
+
+        vm.startPrank(userA);
+        vm.expectRevert(NftPawnShop.NftPawnShop__AlreadyActiveInRequestOrAgreement.selector);
+        nftPawnShop.approvePawnRequest{value: 1 ether}(address(nft), userBNftId);
+        vm.stopPrank();
+    }
+
+    function testCantRequestWithOpenAgreement() public {
+        vm.startPrank(userA);
+        nft.approve(address(nftPawnShop), userANftId);
+        nftPawnShop.requestPawn(address(nft), userANftId, 1 ether, 1 days, 1e17);
+        vm.stopPrank();
+
+        vm.startPrank(userB);
+        nftPawnShop.approvePawnRequest{value: 1 ether}(address(nft), userANftId);
+        vm.stopPrank();
+
+        vm.startPrank(userA);
+        nft.mintNft("uriA2");
+        nft.approve(address(nftPawnShop), userANftId + 2);
+
+        vm.expectRevert(NftPawnShop.NftPawnShop__AlreadyActiveInRequestOrAgreement.selector);
+        nftPawnShop.requestPawn(address(nft), 2, 1 ether, 1 days, 1e17);
+        vm.stopPrank();
+    }
 }

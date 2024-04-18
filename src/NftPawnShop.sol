@@ -44,7 +44,8 @@ contract NftPawnShop is Ownable {
 
     // maps token to pawn request which contains the owner
     mapping(address nftAddress => mapping(uint256 tokenId => PawnRequest)) private s_nftPawnRequests;
-    mapping(address borrower => PawnAgreement) private s_pawnAgreements;
+    mapping(address user => PawnAgreement) private s_pawnAgreements;
+    mapping(address user => PawnRequest) private s_pawnRequests;
 
     mapping(address user => uint256 balance) private s_userBalances;
     uint256 private s_feesAccumulated;
@@ -90,8 +91,16 @@ contract NftPawnShop is Ownable {
     error NftPawnShop__NoPawnRequestToRemove();
     error NftPawnShop__CannotApproveOwnPawnRequest();
     error NftPawnShop__InsufficientValueSent(uint256 valueSent, uint256 price);
+    error NftPawnShop__AlreadyActiveInRequestOrAgreement();
     // Modifiers
     ////////////////////
+
+    modifier noActiveRequestOrAgreement(address user) {
+        if (s_pawnRequests[user].borrower != address(0) || s_pawnAgreements[user].borrower != address(0)) {
+            revert NftPawnShop__AlreadyActiveInRequestOrAgreement();
+        }
+        _;
+    }
 
     modifier notZeroAddress(address _address) {
         if (_address == address(0)) {
@@ -144,7 +153,7 @@ contract NftPawnShop is Ownable {
      * @param nftAddress Address of the NFT contract
      * @param tokenId ID of the NFT
      * @param loanAmount Amount of the loan
-     * @param loanDuration Duration of the loan
+     * @param loanDuration Duration of the loan in days
      * @param interestRate Interest rate of the loan in percentage. 1e18 is 100%. 1e17 is 10%. and so on.
      * @dev The potential borrower requests a loan of loanAmount eth for loanDuration days with an interest rate of interestRate and
      * deposits the nft as collateral. The nft is transferred to the contract.
@@ -155,7 +164,7 @@ contract NftPawnShop is Ownable {
         uint256 loanAmount,
         uint256 loanDuration,
         uint256 interestRate
-    ) external notZeroAddress(nftAddress) notZero(loanAmount) notZero(loanDuration) {
+    ) external notZeroAddress(nftAddress) notZero(loanAmount) notZero(loanDuration) noActiveRequestOrAgreement(msg.sender) {
         PawnRequest memory pawnRequest = PawnRequest({
             borrower: msg.sender,
             nftAddress: nftAddress,
@@ -164,8 +173,10 @@ contract NftPawnShop is Ownable {
             loanDuration: loanDuration,
             interestRate: interestRate
         });
+        
 
         s_nftPawnRequests[nftAddress][tokenId] = pawnRequest;
+        s_pawnRequests[msg.sender] = pawnRequest;
         emit PawnRequested(msg.sender, nftAddress, tokenId, loanAmount, loanDuration, interestRate);
 
         IERC721 nft = IERC721(nftAddress);
@@ -196,7 +207,7 @@ contract NftPawnShop is Ownable {
      * The nft is locked up in the contract and
      * can only be returned to the initial owner if the loan is repaid.
      */
-    function approvePawnRequest(address nftAddress, uint256 tokenId) external payable notZeroAddress(nftAddress) {
+    function approvePawnRequest(address nftAddress, uint256 tokenId) external payable notZeroAddress(nftAddress) noActiveRequestOrAgreement(msg.sender) {
         PawnRequest memory pawnRequest = s_nftPawnRequests[nftAddress][tokenId];
         if (pawnRequest.borrower == address(0)) {
             revert NftPawnShop__NftNotListed(nftAddress, tokenId);
