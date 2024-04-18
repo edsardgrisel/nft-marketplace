@@ -264,7 +264,7 @@ contract NftPawnShopTest is StdCheats, Test {
 
     function testApproveOwnPawnRequest() public userAHasRequestedPawn {
         vm.startPrank(userA);
-        vm.expectRevert(NftPawnShop.NftPawnShop__CannotApproveOwnPawnRequest.selector);
+        vm.expectRevert(NftPawnShop.NftPawnShop__AlreadyActiveInRequestOrAgreement.selector);
         nftPawnShop.approvePawnRequest{value: 1 ether}(address(nft), userANftId);
         vm.stopPrank();
     }
