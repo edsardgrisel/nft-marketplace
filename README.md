@@ -5,6 +5,8 @@ The project is built using the following technologies:
 - Solidity
 - Foundry
 
+The graph subgraph can be found at https://github.com/edsardgrisel/graph-nft-marketplace.
+The frontend can be found at https://github.com/edsardgrisel/nextjs-nft-marketplace.
 ## Table of Contents
 
 1. [Installation](#installation)
