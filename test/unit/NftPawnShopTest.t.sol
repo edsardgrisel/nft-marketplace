@@ -359,6 +359,20 @@ contract NftPawnShopTest is StdCheats, Test {
         vm.stopPrank();
     }
 
+    function testRepayLoanThenRequestThenApproveReverts() public userARequestedAndUserBApprovedPawn {
+        vm.startPrank(userA);
+        nftPawnShop.repayLoan{value: 1.1 ether}();
+        nft.approve(address(nftPawnShop), userANftId);
+        nftPawnShop.requestPawn(address(nft), userANftId, 1 ether, 1 days, 1e17);
+        vm.stopPrank();
+        vm.startPrank(userB);
+        nft.approve(address(nftPawnShop), userBNftId);
+        nftPawnShop.requestPawn(address(nft), userBNftId, 1 ether, 1 days, 1e17);
+        vm.expectRevert();
+        nftPawnShop.approvePawnRequest{value: 1 ether}(address(nft), userBNftId);
+        vm.stopPrank();
+    }
+
     //----withdrawFees Tests----//
 
     function testWithdrawAllFeesAsOwner() public userAListedNft {

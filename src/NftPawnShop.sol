@@ -164,7 +164,13 @@ contract NftPawnShop is Ownable {
         uint256 loanAmount,
         uint256 loanDuration,
         uint256 interestRate
-    ) external notZeroAddress(nftAddress) notZero(loanAmount) notZero(loanDuration) noActiveRequestOrAgreement(msg.sender) {
+    )
+        external
+        notZeroAddress(nftAddress)
+        notZero(loanAmount)
+        notZero(loanDuration)
+        noActiveRequestOrAgreement(msg.sender)
+    {
         PawnRequest memory pawnRequest = PawnRequest({
             borrower: msg.sender,
             nftAddress: nftAddress,
@@ -173,7 +179,6 @@ contract NftPawnShop is Ownable {
             loanDuration: loanDuration,
             interestRate: interestRate
         });
-        
 
         s_nftPawnRequests[nftAddress][tokenId] = pawnRequest;
         s_pawnRequests[msg.sender] = pawnRequest;
@@ -207,7 +212,12 @@ contract NftPawnShop is Ownable {
      * The nft is locked up in the contract and
      * can only be returned to the initial owner if the loan is repaid.
      */
-    function approvePawnRequest(address nftAddress, uint256 tokenId) external payable notZeroAddress(nftAddress) noActiveRequestOrAgreement(msg.sender) {
+    function approvePawnRequest(address nftAddress, uint256 tokenId)
+        external
+        payable
+        notZeroAddress(nftAddress)
+        noActiveRequestOrAgreement(msg.sender)
+    {
         PawnRequest memory pawnRequest = s_nftPawnRequests[nftAddress][tokenId];
         if (pawnRequest.borrower == address(0)) {
             revert NftPawnShop__NftNotListed(nftAddress, tokenId);
@@ -252,10 +262,7 @@ contract NftPawnShop is Ownable {
             interestRate: 0
         });
 
-        s_pawnAgreements[pawnRequest.borrower] = pawnAgreement;
-        s_pawnAgreements[msg.sender] = pawnAgreement;
-
-        s_nftPawnRequests[nftAddress][tokenId] = PawnRequest({
+        s_pawnRequests[pawnRequest.borrower] = PawnRequest({
             borrower: address(0),
             nftAddress: address(0),
             tokenId: 0,
@@ -263,6 +270,9 @@ contract NftPawnShop is Ownable {
             loanDuration: 0,
             interestRate: 0
         });
+
+        s_pawnAgreements[pawnRequest.borrower] = pawnAgreement;
+        s_pawnAgreements[msg.sender] = pawnAgreement;
 
         s_userBalances[pawnRequest.borrower] += msg.value;
     }

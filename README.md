@@ -15,7 +15,12 @@ The project is built using the following technologies:
 
 
 ## Usage
-deploy: make deploy ARGS="--network sepolia"
+Sepolia:
+    deploy: make deploy ARGS="--network sepolia"
+    verify(if verification fails with deploy): forge verify-contract --chain sepolia 0x7Ae3234600de5B6aB066be590Dd5232815d2bf96 NftPawnShop --watch
+
+Anvil:
+    deploy marketplace and mint some nfts: make deploy && make deployNft && make mintNft
 
 ## Features
 
