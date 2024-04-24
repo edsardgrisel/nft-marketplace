@@ -127,6 +127,14 @@ contract NftPawnShopTest is StdCheats, Test {
 
     //----requestPawn Tests----//
 
+    function testRequestCancelRequest() public userAHasRequestedPawn {
+        vm.startPrank(userA);
+        nftPawnShop.removePawnRequest(address(nft), userANftId);
+        nft.approve(address(nftPawnShop), userANftId);
+        nftPawnShop.requestPawn(address(nft), userANftId, 1 ether, 1 days, 1e17 /*10% interest rate annual*/ );
+        vm.stopPrank();
+    }
+
     function testRequestPawn() public {
         vm.startPrank(userA);
         nft.approve(address(nftPawnShop), userANftId);

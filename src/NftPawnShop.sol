@@ -200,6 +200,14 @@ contract NftPawnShop is Ownable {
         }
         _removePawnRequest(nftAddress, tokenId);
         emit PawnRequestRemoved(msg.sender, nftAddress, tokenId);
+        s_pawnRequests[msg.sender] = PawnRequest({
+            borrower: address(0),
+            nftAddress: address(0),
+            tokenId: 0,
+            loanAmount: 0,
+            loanDuration: 0,
+            interestRate: 0
+        });
 
         IERC721 nft = IERC721(nftAddress);
         nft.safeTransferFrom(address(this), msg.sender, tokenId);
@@ -291,7 +299,7 @@ contract NftPawnShop is Ownable {
             emit PawnAgreementRemoved(
                 pawnAgreement.borrower, pawnAgreement.lender, pawnAgreement.nftAddress, pawnAgreement.tokenId
             );
-
+            s_pawnAgreements[pawnAgreement.borrower].borrower = address(0);
             IERC721 nft = IERC721(pawnAgreement.nftAddress);
             nft.safeTransferFrom(address(this), msg.sender, pawnAgreement.tokenId);
         } else {
