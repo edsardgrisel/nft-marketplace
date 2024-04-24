@@ -4,7 +4,7 @@ Pawn Shop NFT Marketpalce is a decentralized application (dApp) that allows user
 The project is built using the following technologies:
 - Solidity
 - Foundry
-- 
+
 ## Table of Contents
 
 1. [Installation](#installation)
@@ -15,12 +15,17 @@ The project is built using the following technologies:
 
 
 ## Usage
-Sepolia:
-    deploy: make deploy ARGS="--network sepolia"
-    verify(if verification fails with deploy): forge verify-contract --chain sepolia {contract address} NftPawnShop --watch
+### Sepolia:
 
-Anvil:
-    deploy marketplace and mint some nfts: make deploy && make deployNft && make mintNft
+deploy: `make deploy ARGS="--network sepolia"`
+
+verify(if verification fails with deploy): `forge verify-contract --chain sepolia {contract address} NftPawnShop --watch`
+
+To deploy marketplace and mint some nfts: `make deploy && make deployNft`
+
+### Local:
+
+mint nfts: `make mintNft`
 
 ## Features
 
